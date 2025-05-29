@@ -279,6 +279,141 @@ The Hugging Face platform provides a variety of online tools for converting, qua
 
 To learn more about model quantization, [read this documentation](tools/quantize/README.md)
 
+## Running a Small Model with llama.cpp
+
+This guide will walk you through the steps to download a small model from Hugging Face, convert it to the GGUF format, and run it using `llama-cli`. We'll use `microsoft/phi-2` as an example, which is a good small model to start with.
+
+### 1. Choosing a Model
+
+You can find many models on Hugging Face. For this example, we'll use `microsoft/phi-2`. It's a 2.7B parameter model that offers a good balance between performance and resource requirements. You can browse other models on the [Hugging Face models page](https://huggingface.co/models).
+
+### 2. Downloading and Converting the Model
+
+`llama.cpp` uses the GGUF (GPT-Generated Unified Format) for its models. This format is optimized for rapid loading and saving of models, and for ease of reading. It's a single-file format that includes all the necessary information to run the model.
+
+To use a Hugging Face model like `phi-2` with `llama.cpp`, you first need to download its weights and then convert them to the GGUF format.
+
+**a. Download the model from Hugging Face:**
+
+It's recommended to clone the model repository using `git-lfs`. First, ensure you have `git-lfs` installed. You can usually install it with:
+
+```bash
+git lfs install
+```
+
+Then, clone the model repository. For `microsoft/phi-2`:
+
+```bash
+git clone https://huggingface.co/microsoft/phi-2
+```
+
+This will download the model files into a directory named `phi-2`.
+
+**b. Convert the model to GGUF:**
+
+`llama.cpp` provides a Python script `convert_hf_to_gguf.py` (often found in the `examples` or `tools` directory, or you might need to ensure it's in your Python path if you installed llama.cpp differently) to convert Hugging Face models to GGUF.
+
+Navigate to your `llama.cpp` directory and run the conversion script. The exact path to the script might vary based on your `llama.cpp` setup.
+
+```bash
+# Assuming you are in the root of the llama.cpp repository
+# and the phi-2 model was cloned into a directory named 'phi-2' sibling to the llama.cpp directory.
+# Adjust paths as necessary.
+
+# Example for older script name 'convert-hf-to-gguf.py'
+python3 ./examples/convert-hf-to-gguf.py ../phi-2 --outfile phi-2.gguf
+
+# Or, if the script is named 'convert_hf_to_gguf.py' and located in 'tools'
+python3 ./tools/convert_hf_to_gguf.py ../phi-2 --outfile phi-2.gguf
+
+# Some models might require specifying the output type, e.g., f16 or q8_0
+python3 ./tools/convert_hf_to_gguf.py ../phi-2 --outfile phi-2-f16.gguf --outtype f16
+```
+
+This command will create a `phi-2.gguf` (or `phi-2-f16.gguf`) file in your current directory. This is the file you'll use with `llama-cli`.
+
+*Note on `convert_hf_to_gguf.py`*: This script has evolved. Older versions were named `convert-hf-to-gguf.py` and might have been located in `examples`. Newer versions are typically `convert_hf_to_gguf.py` and located in the `tools` directory. Always check your local `llama.cpp` repository for the correct script name and location. The script itself often has options to control the quantization of the output GGUF file (e.g., `f16` for 16-bit floating point, `q8_0` for 8-bit quantization, etc.). Smaller, quantized models run faster and use less memory but might have slightly reduced accuracy.
+
+### 3. Understanding GGUF
+
+GGUF (GPT-Generated Unified Format) is a binary format designed for `llama.cpp`. Key features include:
+
+-   **Single File:** All model data (weights, metadata, vocabulary) is contained in one file.
+-   **Extensibility:** Allows adding new information to models without breaking compatibility with older versions.
+-   **Quantization Support:** Natively supports various quantization types, allowing for smaller model sizes and faster inference.
+-   **Memory Mapping (`mmap`):** Designed to be efficiently loaded using memory mapping, which speeds up model loading times significantly.
+
+### 4. Running the Model with `llama-cli`
+
+Once you have your `phi-2.gguf` file, you can run it using the `llama-cli` tool. `llama-cli` is the primary command-line interface for interacting with `llama.cpp` models.
+
+```bash
+# Assuming 'llama-cli' is built and in your PATH, or you are in the directory where it's located.
+# And 'phi-2.gguf' is in the current directory.
+
+./llama-cli -m phi-2.gguf -p "Once upon a time" -n 50
+```
+
+Explanation of the command:
+
+-   `./llama-cli`: Executes the `llama-cli` program.
+-   `-m phi-2.gguf`: Specifies the path to your GGUF model file.
+-   `-p "Once upon a time"`: Provides a prompt to the model.
+-   `-n 50`: Specifies the number of tokens (roughly, parts of words) the model should generate.
+
+You should see the model start generating text based on your prompt.
+
+This covers the basic workflow of getting a small model like `phi-2` up and running with `llama.cpp`. You can explore further options for `llama-cli` to control aspects like temperature, top-k sampling, context size, and more for different generation behaviors.
+
+---
+
+### 5. Running on GPU (NVIDIA CUDA with GTX 3060 Example)
+
+If you have an NVIDIA GPU like the GTX 3060, you can offload some computation layers to it for significantly faster inference.
+
+**Prerequisites:**
+
+-   **NVIDIA CUDA Toolkit:** You'll need the NVIDIA CUDA Toolkit installed.
+-   **Compatible Drivers:** Ensure you have NVIDIA drivers that are compatible with the CUDA Toolkit version you install.
+-   **Build with CUDA Support:** `llama.cpp` must be compiled with CUDA support enabled.
+    You can do this using CMake:
+    ```bash
+    mkdir build
+    cd build
+    cmake .. -DLLAMA_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="<arch>"
+    cmake --build . --config Release
+    ```
+    Replace `<arch>` with the appropriate compute capability for your GPU (e.g., "86" for a GTX 3060 which is Ampere generation). You can find the correct compute capability for your GPU on NVIDIA's CUDA GPUs website: [https://developer.nvidia.com/cuda-gpus](https://developer.nvidia.com/cuda-gpus). For more detailed instructions, refer to the [CUDA build documentation](docs/build.md#cuda).
+
+**Troubleshooting CUDA Build Issues**
+
+If you encounter errors during the build process with CUDA enabled, here are some common issues and recommendations:
+
+-   **`std_function.h` Parameter Pack Error:** Errors like "`std::function` does not support variadic template arguments" or similar messages related to parameter packs in `<functional>` (often seen as `std_function.h` in error paths) can indicate an incompatibility between your C++ compiler (e.g., GCC version) and the installed NVIDIA CUDA Toolkit version (nvcc).
+    -   **Verify Compatibility:** Check NVIDIA's official CUDA Toolkit documentation for a list of supported host C++ compilers for your specific CUDA Toolkit version. Using a newer GCC with an older CUDA Toolkit (or vice-versa) is a common source of such problems.
+    -   **Community Solutions:** Search the `llama.cpp` GitHub issues and discussions. Other users might have faced and solved similar issues with specific compiler/CUDA version combinations on similar operating systems.
+    -   **C++ Standard (Advanced):** Sometimes, explicitly setting a compatible C++ standard for CUDA compilation can help. You might try adding `-DCMAKE_CUDA_STANDARD=17` (or another version like 14) to your CMake command. However, do this cautiously as it can affect other parts of the build.
+    -   **Keep Software Updated:** Generally, ensure your NVIDIA drivers, CUDA Toolkit, and C++ compiler are up-to-date, but always prioritize official compatibility matrices provided by NVIDIA.
+
+**Running with GPU Offload:**
+
+Once `llama.cpp` is built with CUDA support, you can use the `-ngl` (number of GPU layers) flag with `llama-cli` to specify how many layers of the model you want to offload to your GPU.
+
+Here's an example using a hypothetical `model.gguf` and offloading 35 layers to a GTX 3060:
+
+```bash
+./llama-cli -m model.gguf -ngl 35 -p "Running this model on my GTX 3060!" -n 50
+```
+
+**Important Notes for GTX 3060 (and other NVIDIA GPUs):**
+
+-   **`-ngl` Value:** The optimal number for `-ngl` depends on the specific model you are using and the amount of VRAM on your GPU (the GTX 3060 typically comes with 6GB or 12GB VRAM). If you set `-ngl` too high for your VRAM, you might encounter out-of-memory errors. If it's too low, you might not get the best possible performance. You may need to experiment with this value to find the sweet spot for your setup. Start with a moderate number and increase it gradually.
+-   **Driver and Toolkit Versions:** It's crucial to have a matching set of NVIDIA drivers and CUDA Toolkit. For a GTX 3060, always check the [official NVIDIA website](https://www.nvidia.com/Download/index.aspx) for the latest recommended drivers for your operating system and the compatible CUDA Toolkit versions.
+
+By offloading layers to your GPU, you can significantly speed up prompt processing and token generation.
+
+---
+
 ## [`llama-cli`](tools/main)
 
 #### A CLI tool for accessing and experimenting with most of `llama.cpp`'s functionality.
